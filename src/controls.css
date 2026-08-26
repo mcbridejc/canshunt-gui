@@ -1,0 +1,39 @@
+:root {
+  color-scheme: dark;
+}
+
+select,
+select option {
+  background-color: #0c1210 !important;
+  color: #e4ede9 !important;
+}
+
+.state-value {
+  display: block;
+  margin-top: 7px;
+  border: 1px solid var(--line);
+  background: #0c1210;
+  color: #e4ede9;
+  border-radius: 6px;
+  padding: 10px 11px;
+  font-weight: 600;
+}
+
+button:disabled,
+.locked,
+[readonly],
+input:disabled {
+  opacity: 0.42;
+  filter: saturate(0.35);
+  cursor: not-allowed;
+}
+
+.locked:hover {
+  background: #1c2824;
+  color: #7f8c87;
+}
+
+.primary.locked:hover {
+  background: #2d5546;
+  color: #829c91;
+}

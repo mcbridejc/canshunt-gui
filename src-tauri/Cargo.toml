@@ -1,0 +1,22 @@
+[package]
+name = "canshunt-gui"
+version = "0.1.0"
+description = "CANShunt configuration and monitoring"
+edition = "2024"
+
+[lib]
+name = "canshunt_gui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", default-features = false, features = ["wry", "x11"] }
+rusb = { version = "0.9", features = ["vendored"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+zencan-client = { path = "../../zencan/zencan-client" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+socketcan = "3.5"

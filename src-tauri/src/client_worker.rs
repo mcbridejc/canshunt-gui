@@ -7,9 +7,10 @@ use tokio::sync::{mpsc, oneshot};
 use zencan_client::{
     BusManager,
     common::{
-        can::{AsyncCanReceiver, AsyncCanSender, CanSendError},
-        protocol::{LssIdentity, LssRequest, LssResponse, LssState},
-        protocol::{NmtCommand, NmtCommandSpecifier, NmtState},
+        lss::{LssIdentity, LssRequest, LssResponse, LssState},
+        messages::{NmtCommand, NmtCommandSpecifier},
+        nmt::NmtState,
+        traits::{AsyncCanReceiver, AsyncCanSender, CanSendError},
     },
 };
 

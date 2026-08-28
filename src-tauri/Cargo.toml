@@ -16,7 +16,7 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", default-features = false, features = ["wry", "x11"] }
 rusb = { version = "0.9", features = ["vendored"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
-zencan-client = { path = "../../zencan/zencan-client" }
+zencan-client = "0.0.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 socketcan = "3.5"

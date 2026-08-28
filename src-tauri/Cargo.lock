@@ -4607,6 +4607,8 @@ dependencies = [
 [[package]]
 name = "zencan-client"
 version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbce23f43989b1b70ed364e65542051d06bbf1e70268394cd2bb227df512247e"
 dependencies = [
  "crc16",
  "futures",
@@ -4624,6 +4626,8 @@ dependencies = [
 [[package]]
 name = "zencan-common"
 version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a9c7d823d3f2bd914c450bd06d80acc3486727b27715559599a193822cb67b3"
 dependencies = [
  "arbitrary-int",
  "chrono",

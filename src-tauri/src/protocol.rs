@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use zencan_client::{
     BusManager,
-    common::protocol::{ConfiguredNodeId, LssIdentity, LssState, NodeId},
+    common::{
+        lss::{LssIdentity, LssState},
+        node_id::{ConfiguredNodeId, NodeId},
+    },
 };
 
 pub const CANSHUNT_VENDOR: u32 = 0xCAFE;
@@ -278,7 +281,7 @@ async fn require_preoperational(
         .into_iter()
         .find(|node| node.node_id == node_id)
         .and_then(|node| node.nmt_state);
-    if state == Some(zencan_client::common::protocol::NmtState::PreOperational) {
+    if state == Some(zencan_client::common::nmt::NmtState::PreOperational) {
         Ok(())
     } else {
         Err("Device must be in the PreOperational state".into())

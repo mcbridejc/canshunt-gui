@@ -15,16 +15,6 @@ SocketCAN interfaces must already be configured and up. Direct USB access may re
 
 ## Building desktop binaries
 
-Tauri applications are normally built on each target operating system. Build the Linux packages on Linux, the Windows installers on Windows, and the macOS application/DMG on macOS. Using one source tree does not mean that a single Linux build command produces binaries for all three platforms; use native machines, virtual machines, or a CI matrix such as [Tauri's GitHub Actions setup](https://v2.tauri.app/distribute/pipelines/github/).
-
-This project currently uses a relative path dependency for `zencan-client`. The source trees must have this layout on every build machine:
-
-```text
-parent-directory/
-├── canshunt-gui/
-└── zencan/
-    └── zencan-client/
-```
 
 Install a current Node.js LTS release, Rust stable, and the operating system's Tauri prerequisites. From `canshunt-gui`, install the locked frontend dependencies and create a release build:
 
@@ -43,9 +33,9 @@ SocketCAN support is Linux-only. Direct `gs_usb` access is available through lib
 
 ### Windows
 
-Install Rust using the MSVC toolchain, Microsoft C++ Build Tools with **Desktop development with C++**, and Microsoft Edge WebView2. Run the common build commands from PowerShell. Tauri generates Windows installers such as `.msi` and NSIS `.exe` files. Building MSI packages also requires the Windows VBSCRIPT optional feature.
+Install Rust using the MSVC toolchain, Microsoft C++ Build Tools with Desktop development with C++, and Microsoft Edge WebView2. Run the common build commands from PowerShell. Tauri generates Windows installers such as `.msi` and NSIS `.exe` files. Building MSI packages also requires the Windows VBSCRIPT optional feature.
 
-The CANShunt must use a libusb-compatible Windows driver, such as WinUSB, for direct USB access. SocketCAN is not available on Windows.
+The CANShunt must use a libusb-compatible Windows driver, such as WinUSB, for direct USB access.
 
 ### macOS
 
@@ -61,5 +51,3 @@ Run the common build commands to build for the Mac's native architecture. To mak
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 npm run tauri build -- --target universal-apple-darwin
 ```
-
-Unsigned local builds can be tested on their build machine. Publicly distributed macOS builds should be signed and notarized; publicly distributed Windows builds should also be code-signed. See the [Tauri distribution guide](https://v2.tauri.app/distribute/) for signing and installer-specific options.

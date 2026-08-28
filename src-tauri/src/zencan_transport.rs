@@ -4,8 +4,9 @@ use tokio::sync::{
     mpsc::{UnboundedReceiver, unbounded_channel},
     oneshot,
 };
-use zencan_client::common::can::{
-    AsyncCanReceiver, AsyncCanSender, CanId, CanMessage, CanSendError,
+use zencan_client::common::{
+    CanId, CanMessage,
+    traits::{AsyncCanReceiver, AsyncCanSender, CanSendError},
 };
 
 #[derive(Debug)]

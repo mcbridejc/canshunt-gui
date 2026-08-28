@@ -1,5 +1,5 @@
 use crate::{
-    protocol::{self, Device, DeviceIdentity, PdoConfig},
+    protocol::{self, Device, DeviceConfig, DeviceIdentity, PdoConfig},
     zencan_transport::{self, TransportSender},
 };
 use serde::Serialize;
@@ -22,13 +22,15 @@ pub struct RawFrame {
 
 enum Command {
     Scan(oneshot::Sender<Result<Vec<Device>, String>>),
-    ReadPdos(u8, oneshot::Sender<Result<Vec<PdoConfig>, String>>),
+    ReadConfig(u8, oneshot::Sender<Result<DeviceConfig, String>>),
     WritePdos(u8, Vec<PdoConfig>, oneshot::Sender<Result<(), String>>),
     Assign(DeviceIdentity, u8, oneshot::Sender<Result<(), String>>),
     SetBaud(u8, u8, oneshot::Sender<Result<(), String>>),
+    Identify(u8, oneshot::Sender<Result<(), String>>),
     Poll(oneshot::Sender<Result<Vec<RawFrame>, String>>),
     SetNmt(u8, String, oneshot::Sender<Result<String, String>>),
     DirectDevice(u32, oneshot::Sender<Result<Device, String>>),
+    SetPhysicalCan(bool, oneshot::Sender<Result<bool, String>>),
 }
 
 pub struct ClientHandle {
@@ -56,8 +58,9 @@ impl ClientHandle {
                             Command::Scan(reply) => {
                                 let _ = reply.send(protocol::scan(&mut manager).await);
                             }
-                            Command::ReadPdos(node, reply) => {
-                                let _ = reply.send(protocol::read_pdos(&mut manager, node).await);
+                            Command::ReadConfig(node, reply) => {
+                                let _ = reply
+                                    .send(protocol::read_device_config(&mut manager, node).await);
                             }
                             Command::WritePdos(node, pdos, reply) => {
                                 let _ = reply
@@ -71,6 +74,10 @@ impl ClientHandle {
                             Command::SetBaud(node, value, reply) => {
                                 let _ = reply
                                     .send(protocol::set_baudrate(&mut manager, node, value).await);
+                            }
+                            Command::Identify(node, reply) => {
+                                let _ =
+                                    reply.send(protocol::identify_device(&mut manager, node).await);
                             }
                             Command::Poll(reply) => {
                                 let mut frames = Vec::new();
@@ -160,6 +167,10 @@ impl ClientHandle {
                                 .await;
                                 let _ = reply.send(result);
                             }
+                            Command::SetPhysicalCan(enabled, reply) => {
+                                let _ = reply
+                                    .send(control_sender.set_physical_can_enabled(enabled).await);
+                            }
                         }
                     }
                 });
@@ -182,8 +193,8 @@ impl ClientHandle {
     pub async fn scan(&self) -> Result<Vec<Device>, String> {
         self.request(Command::Scan).await
     }
-    pub async fn read_pdos(&self, node: u8) -> Result<Vec<PdoConfig>, String> {
-        self.request(|tx| Command::ReadPdos(node, tx)).await
+    pub async fn read_config(&self, node: u8) -> Result<DeviceConfig, String> {
+        self.request(|tx| Command::ReadConfig(node, tx)).await
     }
     pub async fn write_pdos(&self, node: u8, pdos: Vec<PdoConfig>) -> Result<(), String> {
         self.request(|tx| Command::WritePdos(node, pdos, tx)).await
@@ -194,6 +205,9 @@ impl ClientHandle {
     pub async fn set_baud(&self, node: u8, value: u8) -> Result<(), String> {
         self.request(|tx| Command::SetBaud(node, value, tx)).await
     }
+    pub async fn identify(&self, node: u8) -> Result<(), String> {
+        self.request(|tx| Command::Identify(node, tx)).await
+    }
     pub async fn poll(&self) -> Result<Vec<RawFrame>, String> {
         self.request(Command::Poll).await
     }
@@ -202,6 +216,10 @@ impl ClientHandle {
     }
     pub async fn direct_device(&self, serial: u32) -> Result<Device, String> {
         self.request(|tx| Command::DirectDevice(serial, tx)).await
+    }
+    pub async fn set_physical_can(&self, enabled: bool) -> Result<bool, String> {
+        self.request(|tx| Command::SetPhysicalCan(enabled, tx))
+            .await
     }
 }
 

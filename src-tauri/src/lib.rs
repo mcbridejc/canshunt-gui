@@ -4,7 +4,7 @@ mod transport;
 mod zencan_transport;
 
 use client_worker::{ClientHandle, RawFrame};
-use protocol::{Device, DeviceIdentity, PdoConfig};
+use protocol::{Device, DeviceConfig, DeviceIdentity, PdoConfig};
 use tokio::sync::Mutex;
 use transport::InterfaceDescriptor;
 
@@ -58,15 +58,15 @@ async fn scan_bus(state: tauri::State<'_, AppState>) -> Result<Vec<Device>, Stri
 }
 
 #[tauri::command]
-async fn read_pdos(
+async fn read_device_config(
     state: tauri::State<'_, AppState>,
     node_id: u8,
-) -> Result<Vec<PdoConfig>, String> {
+) -> Result<DeviceConfig, String> {
     let guard = state.client.lock().await;
     guard
         .as_ref()
         .ok_or("Not connected to a CAN interface")?
-        .read_pdos(node_id)
+        .read_config(node_id)
         .await
 }
 
@@ -113,6 +113,29 @@ async fn set_baudrate(
 }
 
 #[tauri::command]
+async fn identify_device(state: tauri::State<'_, AppState>, node_id: u8) -> Result<(), String> {
+    let guard = state.client.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Not connected to a CAN interface")?
+        .identify(node_id)
+        .await
+}
+
+#[tauri::command]
+async fn set_physical_can_enabled(
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<bool, String> {
+    let guard = state.client.lock().await;
+    guard
+        .as_ref()
+        .ok_or("Not connected to a CAN interface")?
+        .set_physical_can(enabled)
+        .await
+}
+
+#[tauri::command]
 async fn poll_frames(state: tauri::State<'_, AppState>) -> Result<Vec<RawFrame>, String> {
     let guard = state.client.lock().await;
     guard
@@ -147,10 +170,12 @@ pub fn run() {
             connect,
             disconnect,
             scan_bus,
-            read_pdos,
+            read_device_config,
             write_pdos,
             assign_node_id,
             set_baudrate,
+            identify_device,
+            set_physical_can_enabled,
             poll_frames,
             set_nmt_state
         ])

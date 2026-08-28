@@ -37,3 +37,103 @@ input:disabled {
   background: #2d5546;
   color: #829c91;
 }
+
+.table-row small.stale {
+  color: var(--orange);
+}
+
+.config-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 14px 20px;
+}
+
+.config-actions strong,
+.config-actions small {
+  display: block;
+}
+
+.config-action-controls,
+.bus-isolation {
+  display: flex;
+  align-items: center;
+}
+
+.config-action-controls {
+  gap: 22px;
+}
+
+.bus-isolation {
+  gap: 8px;
+  color: #c7d6d0;
+  white-space: nowrap;
+}
+
+.bus-isolation input {
+  width: auto;
+  margin: 0;
+}
+
+.device {
+  display: flex;
+  padding: 0;
+}
+
+.device-select {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.identify-device {
+  align-self: stretch;
+  width: 38px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid transparent;
+  background: transparent;
+  color: #e4b84d;
+}
+
+.device:hover .identify-device,
+.device.selected .identify-device {
+  border-left-color: var(--line);
+}
+
+.identify-device:hover {
+  color: #ffd768;
+  background: #1c251b;
+}
+
+.identify-device svg {
+  width: 17px;
+}
+
+.identify-device.identifying svg {
+  animation: identify-flash 0.25s ease-in-out infinite alternate;
+}
+
+@keyframes identify-flash {
+  from { opacity: 0.25; filter: drop-shadow(0 0 0 transparent); }
+  to { opacity: 1; filter: drop-shadow(0 0 5px #ffd768); }
+}
+
+.config-actions strong {
+  font-size: 13px;
+}
+
+.config-actions small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}

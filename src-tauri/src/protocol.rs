@@ -19,6 +19,9 @@ pub struct CanFrame {
 pub trait CanBus: Send {
     fn send(&mut self, frame: &CanFrame) -> Result<(), String>;
     fn receive(&mut self, timeout: Duration) -> Result<Option<CanFrame>, String>;
+    fn set_physical_can_enabled(&mut self, _enabled: bool) -> Result<bool, String> {
+        Err("Physical CAN routing is available only for a direct CANShunt USB connection".into())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -57,6 +60,12 @@ pub struct PdoConfig {
     pub enabled: bool,
     pub can_id: u32,
     pub extended: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceConfig {
+    pub pdos: Vec<PdoConfig>,
+    pub baudrate: u8,
 }
 
 pub async fn scan(manager: &mut BusManager<TransportSender>) -> Result<Vec<Device>, String> {
@@ -120,6 +129,24 @@ pub async fn read_pdos(
             extended: pdo.cob_id.is_extended(),
         })
         .collect())
+}
+
+pub async fn read_device_config(
+    manager: &mut BusManager<TransportSender>,
+    node: u8,
+) -> Result<DeviceConfig, String> {
+    let pdos = read_pdos(manager, node).await?;
+    let baudrate = manager
+        .sdo_client(configured_node(node)?.raw())
+        .read_u8(0x2200, 0)
+        .await
+        .map_err(|error| error.to_string())?;
+    if baudrate > 6 {
+        return Err(format!(
+            "Device reported unsupported baud rate value {baudrate}"
+        ));
+    }
+    Ok(DeviceConfig { pdos, baudrate })
 }
 
 pub async fn write_pdos(
@@ -211,9 +238,25 @@ pub async fn set_baudrate(
         return Err("Invalid baud rate selection".into());
     }
     let node = configured_node(node)?;
+    let mut client = manager.sdo_client(node.raw());
+    client
+        .write_u8(0x2200, 0, value)
+        .await
+        .map_err(|error| error.to_string())?;
+    client
+        .save_objects()
+        .await
+        .map_err(|error| format!("Baud rate was written but could not be persisted: {error}"))
+}
+
+pub async fn identify_device(
+    manager: &mut BusManager<TransportSender>,
+    node: u8,
+) -> Result<(), String> {
+    let node = configured_node(node)?;
     manager
         .sdo_client(node.raw())
-        .write_u8(0x2200, 0, value)
+        .write_u8(0x2F80, 0, 1)
         .await
         .map_err(|error| error.to_string())
 }

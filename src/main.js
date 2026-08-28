@@ -5,13 +5,17 @@ import './controls.css';
 const app = document.querySelector('#app');
 const state = {
   interfaces: [], connected: false, connection: null, devices: [], selected: null,
-  readings: Array.from({ length: 8 }, () => ({ current: null, voltage: null })),
+  readings: Array.from({ length: 8 }, () => ({
+    current: null, currentUpdatedAt: null,
+    voltage: null, voltageUpdatedAt: null,
+  })),
 };
 
 const icons = {
   usb: '<svg viewBox="0 0 24 24"><path d="M12 3v13m0-13-2.5 2.5M12 3l2.5 2.5M8 10H5v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4h-3M9 20h6"/></svg>',
   bus: '<svg viewBox="0 0 24 24"><path d="M5 7h14v10H5zM2 10h3m14 0h3M2 14h3m14 0h3M9 7V4m6 3V4M9 20v-3m6 3v-3"/></svg>',
   scan: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>',
+  identify: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>',
 };
 
 app.innerHTML = `
@@ -39,11 +43,12 @@ app.innerHTML = `
           <div class="reading-table"><div class="table-row table-head"><span>Channel</span><span>Current</span><span>Voltage</span></div><div id="readings"></div></div>
         </section>
         <section id="configuration" class="tab-panel" hidden>
+          <div class="config-actions"><div><strong>Device configuration</strong><small>Refresh settings currently stored on the device</small></div><div class="config-action-controls"><label class="bus-isolation" title="Keep USB communication local to the directly connected CANShunt"><input id="disable-physical-can" type="checkbox" disabled> Disable physical CAN bus</label><button id="read-config" class="small">Read from device</button></div></div>
           <div class="config-grid">
             <article><div class="panel-heading"><div><h3>Device settings</h3><p>CANopen network configuration</p></div></div>
-              <form id="device-form"><label>NMT state<span id="nmt-state-value" class="state-value">Unknown</span></label><button id="nmt-action" class="secondary" type="button">Reset app</button><label>Node ID<input id="node-id" type="number" min="1" max="127" required></label><button id="assign-node" class="secondary" type="submit">Assign & persist</button><label>CAN baud rate<select id="baud"><option value="0">1 Mbit/s</option><option value="1">800 kbit/s</option><option value="2">500 kbit/s</option><option value="3">250 kbit/s</option><option value="4">125 kbit/s</option><option value="5">100 kbit/s</option><option value="6">50 kbit/s</option></select></label><button id="set-baud" class="secondary" type="button">Set baud rate</button></form>
+              <form id="device-form"><label>NMT state<span id="nmt-state-value" class="state-value">Unknown</span></label><button id="nmt-action" class="secondary" type="button">Reset app</button><label>Node ID<input id="node-id" type="number" min="1" max="127" required></label><button id="assign-node" class="secondary" type="submit">Assign & persist</button><label>CAN baud rate<select id="baud"><option value="" disabled>Unknown</option><option value="0">1 Mbit/s</option><option value="1">800 kbit/s</option><option value="2">500 kbit/s</option><option value="3">250 kbit/s</option><option value="4">125 kbit/s</option><option value="5">100 kbit/s</option><option value="6">50 kbit/s</option></select></label><button id="set-baud" class="secondary" type="button">Set baud rate</button></form>
             </article>
-            <article class="pdo-card"><div class="panel-heading"><div><h3>Transmit PDOs</h3><p>Message identifiers and state</p></div><button id="read-pdos" class="small">Read from device</button></div><form id="pdo-form"><div id="pdo-list"></div><button id="apply-pdos" class="primary" type="submit">Apply PDO configuration</button></form></article>
+            <article class="pdo-card"><div class="panel-heading"><div><h3>Transmit PDOs</h3><p>Message identifiers and state</p></div></div><form id="pdo-form"><div id="pdo-list"></div><button id="apply-pdos" class="primary" type="submit">Apply PDO configuration</button></form></article>
           </div>
         </section>
       </div>
@@ -81,12 +86,23 @@ function renderConnection() {
   $('#connect').className = state.connected ? 'danger' : 'primary';
   $('#interface').disabled = state.connected;
   $('#scan').disabled = !state.connected;
+  $('#disable-physical-can').disabled = !state.connected || state.connection?.kind !== 'usb';
 }
 
 function renderDevices() {
   $('#device-count').textContent = state.devices.length;
-  $('#devices').innerHTML = state.devices.length ? state.devices.map((d, i) => `<button class="device ${state.selected === i ? 'selected' : ''}" data-device="${i}"><span class="device-icon">${icons.bus}</span><span><strong>${d.is_canshunt ? 'CANShunt' : 'CANopen device'}</strong><small>${d.node_id === 255 ? 'Unconfigured' : `Node ${d.node_id}`} · ${d.nmt_state || 'State unknown'}${d.serial != null ? ` · ${Number(d.serial).toString(16).toUpperCase().padStart(8, '0')}` : ''}</small></span>${d.is_canshunt ? '<em>CS</em>' : ''}</button>`).join('') : '<div class="empty">No devices found.<br>Check the bus and scan again.</div>';
+  $('#devices').innerHTML = state.devices.length ? state.devices.map((d, i) => `<div class="device ${state.selected === i ? 'selected' : ''}"><button class="device-select" data-device="${i}"><span class="device-icon">${icons.bus}</span><span><strong>${d.is_canshunt ? 'CANShunt' : 'CANopen device'}</strong><small>${d.node_id === 255 ? 'Unconfigured' : `Node ${d.node_id}`} · ${d.nmt_state || 'State unknown'}${d.serial != null ? ` · ${Number(d.serial).toString(16).toUpperCase().padStart(8, '0')}` : ''}</small></span>${d.is_canshunt ? '<em>CS</em>' : ''}</button>${d.is_canshunt ? `<button class="identify-device" data-identify="${i}" title="${d.node_id === 255 ? 'Assign a node ID before identifying this device' : 'Flash this device’s identify LED'}" aria-label="Identify CANShunt node ${d.node_id}" ${d.node_id === 255 ? 'disabled' : ''}>${icons.identify}</button>` : ''}</div>`).join('') : '<div class="empty">No devices found.<br>Check the bus and scan again.</div>';
   document.querySelectorAll('[data-device]').forEach(el => el.onclick = () => selectDevice(Number(el.dataset.device)));
+  document.querySelectorAll('[data-identify]').forEach(el => el.onclick = async () => {
+    const device = state.devices[Number(el.dataset.identify)];
+    el.disabled = true; el.classList.add('identifying');
+    try {
+      await call('identify_device', { nodeId: device.node_id });
+      toast(`Identifying CANShunt node ${device.node_id}`);
+    } finally {
+      el.disabled = false; el.classList.remove('identifying');
+    }
+  });
 }
 
 function selectDevice(index) {
@@ -95,11 +111,12 @@ function selectDevice(index) {
   $('#device-name').textContent = d.is_canshunt ? 'CANShunt' : 'CANopen device';
   $('#device-meta').innerHTML = `<span>${d.node_id === 255 ? 'Unconfigured' : `Node ${d.node_id}`}</span>${d.serial != null ? `<span>Serial ${Number(d.serial).toString(16).toUpperCase().padStart(8, '0')}</span>` : ''}`;
   $('#node-id').value = d.node_id === 255 ? '' : d.node_id;
+  $('#baud').value = d.baudrate == null ? '' : String(d.baudrate);
   $('#nmt-state-value').textContent = d.nmt_state || (d.node_id === 255 ? 'Unconfigured' : 'Unknown');
   $('#nmt-status').innerHTML = `<i></i>${escapeHtml(d.nmt_state || (d.node_id === 255 ? 'Unconfigured' : 'Unknown'))}`;
   renderReadings(); renderPdos(d.pdos || defaultPdos());
   updateConfigurationAccess(d);
-  if (d.is_canshunt && d.node_id !== 255) readPdos();
+  if (d.is_canshunt && d.node_id !== 255) readConfiguration();
 }
 
 function updateConfigurationAccess(d) {
@@ -110,9 +127,10 @@ function updateConfigurationAccess(d) {
   $('#node-id').readOnly = !editable;
   $('#assign-node').classList.toggle('locked', !editable);
   $('#assign-node').setAttribute('aria-disabled', String(!editable));
-  $('#set-baud').disabled = !configured;
+  $('#set-baud').disabled = !configured || $('#baud').value === '';
   $('#baud').disabled = !configured;
-  $('#read-pdos').disabled = !configured;
+  $('#read-config').disabled = !configured;
+  $('#disable-physical-can').disabled = state.connection?.kind !== 'usb';
   $('#pdo-form').querySelectorAll('input').forEach(el => el.disabled = !editable);
   $('#apply-pdos').classList.toggle('locked', !editable);
   $('#apply-pdos').setAttribute('aria-disabled', String(!editable));
@@ -123,12 +141,28 @@ function renderPdos(pdos) {
   $('#pdo-list').innerHTML = pdos.map((p, i) => `<div class="pdo-row"><label class="toggle"><input type="checkbox" data-pdo-enable="${i}" ${p.enabled ? 'checked' : ''}><span></span></label><div><strong>${escapeHtml(p.name)}</strong><small>${i % 2 ? 'Channels 4–7' : 'Channels 0–3'}</small></div><label class="id-input">CAN ID<input data-pdo-id="${i}" value="${formatId(p.can_id, p.extended)}" spellcheck="false"></label><label class="extended"><input type="checkbox" data-pdo-ext="${i}" ${p.extended ? 'checked' : ''}> Extended</label></div>`).join('');
 }
 function renderReadings() {
-  $('#readings').innerHTML = state.readings.map((v, i) => `<div class="table-row"><span><b>${i + 1}</b> Channel ${i}</span><span>${v.current == null ? '—' : `${v.current.toLocaleString()} <small>mA</small>`}</span><span>${v.voltage == null ? '—' : `${(v.voltage / 1000).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} <small>V</small>`}</span></div>`).join('');
+  const now = Date.now();
+  const formatReading = (value, updatedAt, unit, scale = 1) => {
+    if (value == null) return '—';
+    const formatted = scale === 1
+      ? value.toLocaleString()
+      : (value / scale).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const stale = updatedAt == null || now - updatedAt > 2000 ? ' <small class="stale">(stale)</small>' : '';
+    return `${formatted} <small>${unit}</small>${stale}`;
+  };
+  $('#readings').innerHTML = state.readings.map((v, i) => `<div class="table-row"><span><b>${i + 1}</b> Channel ${i}</span><span>${formatReading(v.current, v.currentUpdatedAt, 'mA')}</span><span>${formatReading(v.voltage, v.voltageUpdatedAt, 'V', 1000)}</span></div>`).join('');
 }
 
-async function readPdos() {
+async function readConfiguration() {
   const d = state.devices[state.selected]; if (!d?.is_canshunt) return;
-  try { d.pdos = await call('read_pdos', { nodeId: d.node_id }); renderPdos(d.pdos); updateConfigurationAccess(d); }
+  try {
+    const config = await call('read_device_config', { nodeId: d.node_id });
+    d.pdos = config.pdos;
+    d.baudrate = config.baudrate;
+    $('#baud').value = String(config.baudrate);
+    renderPdos(d.pdos);
+    updateConfigurationAccess(d);
+  }
   catch (_) { /* command already reports the error */ }
 }
 
@@ -136,11 +170,13 @@ $('#refresh').onclick = refreshInterfaces;
 $('#connect').onclick = async () => {
   if (state.connected) {
     await call('disconnect'); Object.assign(state, { connected: false, connection: null, devices: [], selected: null });
+    $('#disable-physical-can').checked = false;
     $('#detail').hidden = true; $('#welcome').hidden = false; renderDevices(); renderConnection(); return;
   }
   const item = state.interfaces[Number($('#interface').value)]; if (!item) return;
   const directDevice = await call('connect', { descriptor: item });
   state.connected = true; state.connection = item;
+  $('#disable-physical-can').checked = false;
   if (directDevice) {
     state.devices = [directDevice];
     renderDevices();
@@ -153,7 +189,25 @@ $('#scan').onclick = async () => {
   try { state.devices = await call('scan_bus'); state.selected = null; $('#detail').hidden = true; $('#welcome').hidden = false; renderDevices(); toast(`Found ${state.devices.length} device${state.devices.length === 1 ? '' : 's'}`); }
   finally { button.disabled = false; button.classList.remove('busy'); }
 };
-$('#read-pdos').onclick = readPdos;
+$('#read-config').onclick = readConfiguration;
+$('#disable-physical-can').onchange = async (event) => {
+  const checkbox = event.currentTarget;
+  const requestedDisabled = checkbox.checked;
+  checkbox.disabled = true;
+  try {
+    const enabled = await call('set_physical_can_enabled', { enabled: !requestedDisabled });
+    checkbox.checked = !enabled;
+    toast(enabled ? 'Physical CAN bus enabled' : 'Physical CAN bus disabled; USB is local-only');
+  } catch (_) {
+    checkbox.checked = !requestedDisabled;
+  } finally {
+    checkbox.disabled = state.connection?.kind !== 'usb';
+  }
+};
+$('#baud').onchange = () => {
+  const d = state.devices[state.selected];
+  $('#set-baud').disabled = !d?.is_canshunt || d.node_id === 255 || $('#baud').value === '';
+};
 $('#nmt-action').onclick = async () => {
   const d = state.devices[state.selected];
   const requested = d.nmt_state === 'PreOperational' ? 'Start' : 'ResetApp';
@@ -169,7 +223,7 @@ $('#device-form').onsubmit = async (event) => {
   const identity = { vendor_id: d.vendor_id, product_code: d.product_code, revision: d.revision, serial: d.serial };
   await call('assign_node_id', { identity, newNodeId: newId }); d.node_id = newId; renderDevices(); selectDevice(state.selected); toast(`Node ID changed to ${newId}`);
 };
-$('#set-baud').onclick = async () => { const d = state.devices[state.selected]; await call('set_baudrate', { nodeId: d.node_id, value: Number($('#baud').value) }); toast('Baud rate written'); };
+$('#set-baud').onclick = async () => { const d = state.devices[state.selected]; const value = Number($('#baud').value); await call('set_baudrate', { nodeId: d.node_id, value }); d.baudrate = value; toast('Baud rate written'); };
 $('#pdo-form').onsubmit = async (event) => {
   event.preventDefault(); const d = state.devices[state.selected];
   if (d.nmt_state !== 'PreOperational') return toast('PDO configuration cannot be changed while the device is running. Reset the application first.', true);
@@ -208,11 +262,16 @@ async function pollFrames() {
       if (pdoIndex < 0 || frame.data.length < 8) continue;
       const kind = pdoIndex < 2 ? 'current' : 'voltage';
       const offset = pdoIndex % 2 ? 4 : 0;
-      for (let i = 0; i < 4; i++) state.readings[offset + i][kind] = frame.data[i * 2] | (frame.data[i * 2 + 1] << 8);
+      const updatedAt = Date.now();
+      for (let i = 0; i < 4; i++) {
+        state.readings[offset + i][kind] = frame.data[i * 2] | (frame.data[i * 2 + 1] << 8);
+        state.readings[offset + i][`${kind}UpdatedAt`] = updatedAt;
+      }
       changed = true;
     }
     if (changed) renderReadings();
   } catch (_) { /* A foreground command can temporarily own the bus. */ }
 }
 setInterval(pollFrames, 100);
+setInterval(renderReadings, 250);
 renderReadings(); refreshInterfaces();

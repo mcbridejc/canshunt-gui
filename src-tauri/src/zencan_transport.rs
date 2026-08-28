@@ -1,13 +1,21 @@
 use crate::protocol::{CanBus, CanFrame};
 use std::{sync::mpsc, thread, time::Duration};
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::{
+    mpsc::{UnboundedReceiver, unbounded_channel},
+    oneshot,
+};
 use zencan_client::common::can::{
     AsyncCanReceiver, AsyncCanSender, CanId, CanMessage, CanSendError,
 };
 
 #[derive(Debug)]
 pub struct TransportSender {
-    tx: mpsc::Sender<CanMessage>,
+    tx: mpsc::Sender<TransportCommand>,
+}
+
+enum TransportCommand {
+    Frame(CanMessage),
+    SetPhysicalCan(bool, oneshot::Sender<Result<bool, String>>),
 }
 
 impl Clone for TransportSender {
@@ -35,8 +43,23 @@ impl AsyncCanSender for TransportSender {
 
     async fn send(&mut self, msg: CanMessage) -> Result<(), Self::Error> {
         self.tx
-            .send(msg)
-            .map_err(|error| TransportSendError(error.0))
+            .send(TransportCommand::Frame(msg))
+            .map_err(|error| match error.0 {
+                TransportCommand::Frame(message) => TransportSendError(message),
+                TransportCommand::SetPhysicalCan(_, _) => unreachable!(),
+            })
+    }
+}
+
+impl TransportSender {
+    pub async fn set_physical_can_enabled(&self, enabled: bool) -> Result<bool, String> {
+        let (reply, response) = oneshot::channel();
+        self.tx
+            .send(TransportCommand::SetPhysicalCan(enabled, reply))
+            .map_err(|_| "CAN transport is disconnected".to_string())?;
+        response
+            .await
+            .map_err(|_| "CAN transport is disconnected".to_string())?
     }
 }
 
@@ -68,7 +91,7 @@ pub fn start(
     TransportReceiver,
     TransportReceiver,
 ) {
-    let (send_tx, send_rx) = mpsc::channel::<CanMessage>();
+    let (send_tx, send_rx) = mpsc::channel::<TransportCommand>();
     let (manager_tx, manager_rx) = unbounded_channel();
     let (monitor_tx, monitor_rx) = unbounded_channel();
     let (discovery_tx, discovery_rx) = unbounded_channel();
@@ -77,15 +100,22 @@ pub fn start(
         .name("canshunt-can".into())
         .spawn(move || {
             loop {
-                while let Ok(message) = send_rx.try_recv() {
-                    let id = message.id();
-                    let frame = CanFrame {
-                        id: id.raw(),
-                        extended: id.is_extended(),
-                        data: message.data().to_vec(),
-                    };
-                    if bus.send(&frame).is_err() {
-                        return;
+                while let Ok(command) = send_rx.try_recv() {
+                    match command {
+                        TransportCommand::Frame(message) => {
+                            let id = message.id();
+                            let frame = CanFrame {
+                                id: id.raw(),
+                                extended: id.is_extended(),
+                                data: message.data().to_vec(),
+                            };
+                            if bus.send(&frame).is_err() {
+                                return;
+                            }
+                        }
+                        TransportCommand::SetPhysicalCan(enabled, reply) => {
+                            let _ = reply.send(bus.set_physical_can_enabled(enabled));
+                        }
                     }
                 }
                 match bus.receive(Duration::from_millis(5)) {

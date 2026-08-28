@@ -4,6 +4,9 @@ use std::time::Duration;
 
 const VID: u16 = 0x1209;
 const PID: u16 = 0x5F4D;
+const CANSHUNT_CONTROL_REQUEST: u8 = 0xC0;
+const CANSHUNT_CONTROL_MAGIC: u16 = 0x4353;
+const CANSHUNT_CONTROL_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterfaceDescriptor {
@@ -286,10 +289,50 @@ impl CanBus for GsUsbBus {
             Err(e) => Err(format!("USB CAN receive failed: {e}")),
         }
     }
+
+    fn set_physical_can_enabled(&mut self, enabled: bool) -> Result<bool, String> {
+        let requested_local_only = !enabled;
+        self.handle
+            .write_control(
+                0x40,
+                CANSHUNT_CONTROL_REQUEST,
+                u16::from(requested_local_only),
+                CANSHUNT_CONTROL_MAGIC,
+                &[CANSHUNT_CONTROL_VERSION],
+                Duration::from_secs(1),
+            )
+            .map_err(|error| format!("CANShunt routing request failed: {error}"))?;
+
+        let mut status = [0u8; 2];
+        let count = self
+            .handle
+            .read_control(
+                0xC0,
+                CANSHUNT_CONTROL_REQUEST,
+                0,
+                CANSHUNT_CONTROL_MAGIC,
+                &mut status,
+                Duration::from_secs(1),
+            )
+            .map_err(|error| format!("Could not verify CANShunt routing mode: {error}"))?;
+        if count != status.len() || status[0] != CANSHUNT_CONTROL_VERSION {
+            return Err("CANShunt returned an unsupported USB control response".into());
+        }
+        let applied_enabled = match status[1] {
+            0 => true,
+            1 => false,
+            value => return Err(format!("CANShunt returned invalid routing mode {value}")),
+        };
+        if applied_enabled != enabled {
+            return Err("CANShunt did not apply the requested routing mode".into());
+        }
+        Ok(applied_enabled)
+    }
 }
 
 impl Drop for GsUsbBus {
     fn drop(&mut self) {
+        let _ = self.set_physical_can_enabled(true);
         let mut mode = Vec::from(0u32.to_le_bytes());
         mode.extend(0u32.to_le_bytes());
         let _ = self.handle.write_control(

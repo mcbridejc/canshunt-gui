@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 import './style.css';
 import './controls.css';
 
@@ -19,7 +20,7 @@ const icons = {
 };
 
 app.innerHTML = `
-  <header><div class="brand"><div class="logo">CS</div><div><h1>CANShunt</h1><p>Configuration & monitoring</p></div></div><div id="connection-pill" class="pill offline"><i></i>Disconnected</div></header>
+  <header><div class="brand"><div class="logo">CS</div><div><div class="product-title"><h1>CANShunt</h1><span id="app-version"></span></div><p>Configuration & monitoring</p></div></div><div id="connection-pill" class="pill offline"><i></i>Disconnected</div></header>
   <main>
     <aside>
       <section class="connect-card">
@@ -275,3 +276,4 @@ async function pollFrames() {
 setInterval(pollFrames, 100);
 setInterval(renderReadings, 250);
 renderReadings(); refreshInterfaces();
+getVersion().then(version => { $('#app-version').textContent = `v${version}`; }).catch(() => {});

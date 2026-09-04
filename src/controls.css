@@ -2,6 +2,17 @@
   color-scheme: dark;
 }
 
+.product-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+#app-version {
+  color: var(--muted);
+  font: 10px 'JetBrains Mono';
+}
+
 select,
 select option {
   background-color: #0c1210 !important;

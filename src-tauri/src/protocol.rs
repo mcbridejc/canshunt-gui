@@ -1,11 +1,13 @@
 use crate::zencan_transport::TransportSender;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{array, time::Duration};
 use zencan_client::{
     BusManager,
     common::{
+        CanId,
         lss::{LssIdentity, LssState},
         node_id::{ConfiguredNodeId, NodeId},
+        pdo::{PdoCommParameter, PdoMapping},
     },
 };
 
@@ -34,6 +36,7 @@ pub struct Device {
     pub product_code: Option<u32>,
     pub revision: Option<u32>,
     pub serial: Option<u32>,
+    pub software_version: Option<String>,
     pub is_canshunt: bool,
     pub nmt_state: Option<String>,
 }
@@ -69,6 +72,7 @@ pub struct PdoConfig {
 pub struct DeviceConfig {
     pub pdos: Vec<PdoConfig>,
     pub baudrate: u8,
+    pub software_version: Option<String>,
 }
 
 pub async fn scan(manager: &mut BusManager<TransportSender>) -> Result<Vec<Device>, String> {
@@ -85,6 +89,7 @@ pub async fn scan(manager: &mut BusManager<TransportSender>) -> Result<Vec<Devic
             is_canshunt: identity.vendor_id == CANSHUNT_VENDOR
                 && identity.product_code == CANSHUNT_PRODUCT,
             nmt_state: None,
+            software_version: None,
         })
         .collect::<Vec<_>>();
     let configured = manager
@@ -103,6 +108,7 @@ pub async fn scan(manager: &mut BusManager<TransportSender>) -> Result<Vec<Devic
                 id.vendor_id == CANSHUNT_VENDOR && id.product_code == CANSHUNT_PRODUCT
             }),
             nmt_state: node.nmt_state.map(|state| state.to_string()),
+            software_version: node.software_version,
         }
     }));
     Ok(devices)
@@ -127,9 +133,9 @@ pub async fn read_pdos(
         .enumerate()
         .map(|(index, pdo)| PdoConfig {
             name: NAMES[index].into(),
-            enabled: pdo.enabled,
-            can_id: pdo.cob_id.raw(),
-            extended: pdo.cob_id.is_extended(),
+            enabled: pdo.comm.valid,
+            can_id: pdo.comm.cob_id.raw(),
+            extended: pdo.comm.cob_id.is_extended(),
         })
         .collect())
 }
@@ -149,7 +155,17 @@ pub async fn read_device_config(
             "Device reported unsupported baud rate value {baudrate}"
         ));
     }
-    Ok(DeviceConfig { pdos, baudrate })
+    // Older firmware may not expose the optional version object.
+    let software_version = manager
+        .sdo_client(configured_node(node)?.raw())
+        .read_software_version()
+        .await
+        .ok();
+    Ok(DeviceConfig {
+        pdos,
+        baudrate,
+        software_version,
+    })
 }
 
 pub async fn write_pdos(
@@ -163,41 +179,62 @@ pub async fn write_pdos(
     let node = configured_node(node)?;
     require_preoperational(manager, node.raw()).await?;
     let mut client = manager.sdo_client(node.raw());
+
+    let mappings: [[PdoMapping; 4]; 4] = [
+        array::from_fn(|i| PdoMapping {
+            index: 0x2010,
+            sub: (i + 1) as u8,
+            size: 16,
+        }),
+        array::from_fn(|i| PdoMapping {
+            index: 0x2010,
+            sub: (i + 5) as u8,
+            size: 16,
+        }),
+        array::from_fn(|i| PdoMapping {
+            index: 0x2011,
+            sub: (i + 1) as u8,
+            size: 16,
+        }),
+        array::from_fn(|i| PdoMapping {
+            index: 0x2011,
+            sub: (i + 5) as u8,
+            size: 16,
+        }),
+    ];
+
     for (index, pdo) in pdos.iter().enumerate() {
         let max = if pdo.extended { 0x1FFF_FFFF } else { 0x7FF };
         if pdo.can_id > max {
             return Err(format!("{} CAN ID is out of range", pdo.name));
         }
-        let comm = 0x1800 + index as u16;
-        let mapping = 0x1A00 + index as u16;
-        let frame_flag = if pdo.extended { 1 << 29 } else { 0 };
+
+        let cob_id = if pdo.extended {
+            CanId::extended(pdo.can_id)
+        } else {
+            CanId::std(pdo.can_id as u16)
+        };
+
         client
-            .write_u32(comm, 1, pdo.can_id | frame_flag | (1 << 31))
+            .configure_tpdo(
+                index,
+                &zencan_client::common::node_configuration::PdoConfig {
+                    comm: PdoCommParameter {
+                        valid: pdo.enabled,
+                        rtr_disabled: false,
+                        cob_id,
+                        transmission_type: 254,
+                    },
+                    mappings: mappings[index].to_vec(),
+                },
+            )
             .await
-            .map_err(|error| error.to_string())?;
-        client
-            .write_u8(mapping, 0, 0)
-            .await
-            .map_err(|error| error.to_string())?;
-        let object = if index < 2 { 0x2010u32 } else { 0x2011u32 };
-        let first_sub = if index % 2 == 0 { 1 } else { 5 };
-        for slot in 0..4u8 {
-            let entry = (object << 16) | (((first_sub + slot) as u32) << 8) | 16;
-            client
-                .write_u32(mapping, slot + 1, entry)
-                .await
-                .map_err(|error| error.to_string())?;
-        }
-        client
-            .write_u8(mapping, 0, 4)
-            .await
-            .map_err(|error| error.to_string())?;
-        let disabled = if pdo.enabled { 0 } else { 1 << 31 };
-        client
-            .write_u32(comm, 1, pdo.can_id | frame_flag | disabled)
-            .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|e| e.to_string())?;
     }
+
+    // Save the downloaded config to flash
+    client.save_objects().await.map_err(|e| e.to_string())?;
+
     Ok(())
 }
 

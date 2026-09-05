@@ -61,8 +61,7 @@ input:disabled {
   padding: 14px 20px;
 }
 
-.config-actions strong,
-.config-actions small {
+.config-actions strong {
   display: block;
 }
 
@@ -143,8 +142,30 @@ input:disabled {
   font-size: 13px;
 }
 
-.config-actions small {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 10px;
+#read-config {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 155px;
+  width: auto;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+#read-config:hover:enabled {
+  background: #283a32;
+}
+
+.read-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .read-spinner { animation: none; }
 }

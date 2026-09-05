@@ -12,6 +12,8 @@ const state = {
   })),
 };
 
+const configurationReads = new WeakMap();
+
 const icons = {
   usb: '<svg viewBox="0 0 24 24"><path d="M12 3v13m0-13-2.5 2.5M12 3l2.5 2.5M8 10H5v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4h-3M9 20h6"/></svg>',
   bus: '<svg viewBox="0 0 24 24"><path d="M5 7h14v10H5zM2 10h3m14 0h3M2 14h3m14 0h3M9 7V4m6 3V4M9 20v-3m6 3v-3"/></svg>',
@@ -44,12 +46,12 @@ app.innerHTML = `
           <div class="reading-table"><div class="table-row table-head"><span>Channel</span><span>Current</span><span>Voltage</span></div><div id="readings"></div></div>
         </section>
         <section id="configuration" class="tab-panel" hidden>
-          <div class="config-actions"><div><strong>Device configuration</strong><small>Refresh settings currently stored on the device</small></div><div class="config-action-controls"><label class="bus-isolation" title="Keep USB communication local to the directly connected CANShunt"><input id="disable-physical-can" type="checkbox" disabled> Disable physical CAN bus</label><button id="read-config" class="small">Read from device</button></div></div>
+          <div class="config-actions"><div><strong>Device configuration</strong></div><div class="config-action-controls"><label class="bus-isolation" title="Keep USB communication local to the directly connected CANShunt"><input id="disable-physical-can" type="checkbox" disabled> Disable physical CAN bus</label><button id="read-config" class="secondary" aria-live="polite">Read from device</button></div></div>
           <div class="config-grid">
-            <article><div class="panel-heading"><div><h3>Device settings</h3><p>CANopen network configuration</p></div></div>
-              <form id="device-form"><label>NMT state<span id="nmt-state-value" class="state-value">Unknown</span></label><button id="nmt-action" class="secondary" type="button">Reset app</button><label>Node ID<input id="node-id" type="number" min="1" max="127" required></label><button id="assign-node" class="secondary" type="submit">Assign & persist</button><label>CAN baud rate<select id="baud"><option value="" disabled>Unknown</option><option value="0">1 Mbit/s</option><option value="1">800 kbit/s</option><option value="2">500 kbit/s</option><option value="3">250 kbit/s</option><option value="4">125 kbit/s</option><option value="5">100 kbit/s</option><option value="6">50 kbit/s</option></select></label><button id="set-baud" class="secondary" type="button">Set baud rate</button></form>
+            <article><div class="panel-heading"><div><h3>Device settings</h3></div></div>
+              <form id="device-form"><label>NMT state<span id="nmt-state-value" class="state-value">Unknown</span></label><button id="nmt-action" class="secondary" type="button">Reset Node</button><label>Node ID<input id="node-id" type="number" min="1" max="127" required></label><button id="assign-node" class="secondary" type="submit">Assign & persist</button><label>CAN baud rate<select id="baud"><option value="" disabled>Unknown</option><option value="0">1 Mbit/s</option><option value="1">800 kbit/s</option><option value="2">500 kbit/s</option><option value="3">250 kbit/s</option><option value="4">125 kbit/s</option><option value="5">100 kbit/s</option><option value="6">50 kbit/s</option></select></label><button id="set-baud" class="secondary" type="button">Set baud rate</button></form>
             </article>
-            <article class="pdo-card"><div class="panel-heading"><div><h3>Transmit PDOs</h3><p>Message identifiers and state</p></div></div><form id="pdo-form"><div id="pdo-list"></div><button id="apply-pdos" class="primary" type="submit">Apply PDO configuration</button></form></article>
+            <article class="pdo-card"><div class="panel-heading"><div><h3>Transmit PDOs</h3><p id="pdo-locked-note" hidden>PDO config cannot be changed while running. Reset node to edit</p></div></div><form id="pdo-form"><div id="pdo-list"></div><button id="apply-pdos" class="primary" type="submit">Apply PDO configuration</button></form></article>
           </div>
         </section>
       </div>
@@ -106,11 +108,15 @@ function renderDevices() {
   });
 }
 
+function renderDeviceMeta(d) {
+  $('#device-meta').innerHTML = `<span>${d.node_id === 255 ? 'Unconfigured' : `Node ${d.node_id}`}</span>${d.serial != null ? `<span>Serial ${Number(d.serial).toString(16).toUpperCase().padStart(8, '0')}</span>` : ''}<span>Software ${escapeHtml(d.software_version || 'Unknown')}</span>`;
+}
+
 function selectDevice(index) {
   state.selected = index; const d = state.devices[index]; renderDevices();
   $('#welcome').hidden = true; $('#detail').hidden = false;
   $('#device-name').textContent = d.is_canshunt ? 'CANShunt' : 'CANopen device';
-  $('#device-meta').innerHTML = `<span>${d.node_id === 255 ? 'Unconfigured' : `Node ${d.node_id}`}</span>${d.serial != null ? `<span>Serial ${Number(d.serial).toString(16).toUpperCase().padStart(8, '0')}</span>` : ''}`;
+  renderDeviceMeta(d);
   $('#node-id').value = d.node_id === 255 ? '' : d.node_id;
   $('#baud').value = d.baudrate == null ? '' : String(d.baudrate);
   $('#nmt-state-value').textContent = d.nmt_state || (d.node_id === 255 ? 'Unconfigured' : 'Unknown');
@@ -123,16 +129,17 @@ function selectDevice(index) {
 function updateConfigurationAccess(d) {
   const configured = d.is_canshunt && d.node_id !== 255;
   const editable = configured && d.nmt_state === 'PreOperational';
-  $('#nmt-action').textContent = d.nmt_state === 'PreOperational' ? 'Start' : 'Reset app';
+  $('#nmt-action').textContent = d.nmt_state === 'PreOperational' ? 'Start' : 'Reset Node';
   $('#nmt-action').disabled = !configured;
   $('#node-id').readOnly = !editable;
   $('#assign-node').classList.toggle('locked', !editable);
   $('#assign-node').setAttribute('aria-disabled', String(!editable));
   $('#set-baud').disabled = !configured || $('#baud').value === '';
   $('#baud').disabled = !configured;
-  $('#read-config').disabled = !configured;
+  updateReadButton(d);
   $('#disable-physical-can').disabled = state.connection?.kind !== 'usb';
   $('#pdo-form').querySelectorAll('input').forEach(el => el.disabled = !editable);
+  $('#pdo-locked-note').hidden = editable;
   $('#apply-pdos').classList.toggle('locked', !editable);
   $('#apply-pdos').setAttribute('aria-disabled', String(!editable));
 }
@@ -154,17 +161,45 @@ function renderReadings() {
   $('#readings').innerHTML = state.readings.map((v, i) => `<div class="table-row"><span><b>${i + 1}</b> Channel ${i}</span><span>${formatReading(v.current, v.currentUpdatedAt, 'mA')}</span><span>${formatReading(v.voltage, v.voltageUpdatedAt, 'V', 1000)}</span></div>`).join('');
 }
 
+function updateReadButton(d) {
+  const status = configurationReads.get(d)?.status;
+  const loading = status === 'loading';
+  const button = $('#read-config');
+  button.disabled = !d?.is_canshunt || d.node_id === 255 || loading;
+  button.setAttribute('aria-busy', String(loading));
+  button.innerHTML = loading
+    ? '<span class="read-spinner" aria-hidden="true"></span> Reading…'
+    : status === 'success' ? '✓ Config read' : status === 'error' ? 'Read failed · Retry' : 'Read from device';
+}
+
 async function readConfiguration() {
-  const d = state.devices[state.selected]; if (!d?.is_canshunt) return;
+  const d = state.devices[state.selected];
+  if (!d?.is_canshunt || d.node_id === 255 || configurationReads.get(d)?.status === 'loading') return;
+  clearTimeout(configurationReads.get(d)?.timer);
+  const read = { status: 'loading' };
+  configurationReads.set(d, read);
+  updateReadButton(d);
   try {
     const config = await call('read_device_config', { nodeId: d.node_id });
     d.pdos = config.pdos;
     d.baudrate = config.baudrate;
-    $('#baud').value = String(config.baudrate);
-    renderPdos(d.pdos);
-    updateConfigurationAccess(d);
+    d.software_version = config.software_version;
+    read.status = 'success';
+    if (state.devices[state.selected] === d) {
+      renderDeviceMeta(d);
+      $('#baud').value = String(config.baudrate);
+      renderPdos(d.pdos);
+      updateConfigurationAccess(d);
+    }
+    read.timer = setTimeout(() => {
+      configurationReads.delete(d);
+      if (state.devices[state.selected] === d) updateReadButton(d);
+    }, 2000);
   }
-  catch (_) { /* command already reports the error */ }
+  catch (_) { read.status = 'error'; /* command already reports the error */ }
+  finally {
+    if (state.devices[state.selected] === d) updateReadButton(d);
+  }
 }
 
 $('#refresh').onclick = refreshInterfaces;

@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "canshunt-gui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rusb",
  "serde",
@@ -4606,9 +4606,9 @@ dependencies = [
 
 [[package]]
 name = "zencan-client"
-version = "0.0.4"
+version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbce23f43989b1b70ed364e65542051d06bbf1e70268394cd2bb227df512247e"
+checksum = "775b4ae9ea18b346bffcbe489ffc1f74f5b9f619a28966f71897b6302e66f4f7"
 dependencies = [
  "crc16",
  "futures",
@@ -4625,9 +4625,9 @@ dependencies = [
 
 [[package]]
 name = "zencan-common"
-version = "0.0.4"
+version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a9c7d823d3f2bd914c450bd06d80acc3486727b27715559599a193822cb67b3"
+checksum = "5e6fa25db19e05660f46fcec28ebf4c9d2b30c8b97acce32f50488391d77a60b"
 dependencies = [
  "arbitrary-int",
  "chrono",

@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "CANShunt", "width": 1180, "height": 760, "minWidth": 900, "minHeight": 620 }],
+    "windows": [{ "title": "CANShunt GUI", "width": 1180, "height": 760, "minWidth": 900, "minHeight": 620 }],
     "security": { "csp": null }
   },
   "bundle": {

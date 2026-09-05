@@ -161,6 +161,7 @@ impl ClientHandle {
                                         product_code: Some(identity.product_code),
                                         revision: Some(identity.revision),
                                         serial: Some(identity.serial),
+                                        software_version: None,
                                         is_canshunt: true,
                                         nmt_state,
                                     })
